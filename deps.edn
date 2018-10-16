@@ -1,0 +1,4 @@
+{:deps {org.clojure/clojure {:mvn/version "1.9.0"}
+        org.clojure/tools.cli {:mvn/version "0.4.1"}}
+ :paths ["src"]
+ :aliases {:run {:main-opts ["-m" "notes.core"]}}}
