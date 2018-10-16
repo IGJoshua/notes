@@ -7,12 +7,12 @@
    [clojure.string :as str]
    [clojure.tools.cli :as cli])
   (:import
-   (com.github.luben.zstd Zstd)
    (java.io RandomAccessFile)
    (java.nio MappedByteBuffer)
    (java.nio.channels FileChannel$MapMode)
    (java.time LocalDateTime)
-   (java.util Calendar))
+   (java.util Calendar)
+   (net.jpountz.lz4 LZ4Factory))
   (:gen-class))
 
 (s/def ::hour (s/and int? (partial > 24) (complement neg?)))
@@ -153,6 +153,7 @@
        (str/join \newline)))
 
 (def ^:dynamic *db-file* "notes.db")
+(def ^:dynamic *compressor-factory* nil)
 
 (defn append-entry
   [note]
@@ -160,10 +161,11 @@
     (when-not (.exists file)
       (spit file nil))
     (with-open [fc (.getChannel (RandomAccessFile. file "rw"))]
-      (let [meta-str (prn-str (select-keys note [::topic ::title ::tags]))
-            meta-arr (Zstd/compress (.getBytes meta-str))
+      (let [compressor (.fastCompressor *compressor-factory*)
+            meta-str (prn-str (select-keys note [::topic ::title ::tags]))
+            meta-arr (.compress compressor (.getBytes meta-str))
             note-str (prn-str note)
-            note-arr (Zstd/compress (.getBytes note-str))
+            note-arr (.compress compressor (.getBytes note-str))
             buffer (.map fc FileChannel$MapMode/READ_WRITE
                          (.size fc)
                          (+ (* 5 Long/BYTES)
@@ -188,8 +190,8 @@
         meta-arr-len (.getLong buffer)
         meta-arr ^bytes (make-array Byte/TYPE meta-arr-len)]
     (.get buffer meta-arr)
-    (let [meta-str (String. (Zstd/decompress meta-arr meta-len))
-          ;; Edited to this point
+    (let [meta-str (String. (.decompress (.fastDecompressor *compressor-factory*)
+                                         meta-arr meta-len))
           tags (assoc (edn/read-string meta-str)
                       ::location (+ loc (* Long/BYTES 5) meta-arr-len)
                       ::size (.getLong buffer)
@@ -239,7 +241,8 @@
                                            (::compressed-size metadata))
             arr ^bytes (make-array Byte/TYPE (::compressed-size metadata))]
         (.get buffer arr)
-        (edn/read-string (String. (Zstd/decompress arr (int (::size metadata)))))))))
+        (edn/read-string (String. (.decompress (.fastDecompressor *compressor-factory*)
+                                               arr (int (::size metadata)))))))))
 (s/fdef read-entry
   :args (s/cat :metadata ::metadata)
   :ret ::note)
@@ -306,19 +309,20 @@
       (binding [*db-file* (or (:file options)
                               *db-file*)]
         (if (seq arguments)
-          (case (str/lower-case (first arguments))
-            "add" (append-entry (note :content (rest arguments)
-                                      :title (:title options)
-                                      :topic (:topic options)
-                                      :tags (:tags options)
-                                      :date (current-date)))
-            "search" (doseq [entry (interpose
-                                    "\n"
-                                    (sequence (apply-keyword-args
-                                               filter-xf
-                                               :content (str/join \space (rest arguments))
-                                               options)
-                                              (entry-metadata)))]
-                       (println entry))
-            (println "Invalid command. Try \"notes --help\" to see how the program is used"))
+          (binding [*compressor-factory* (LZ4Factory/safeInstance)]
+            (case (str/lower-case (first arguments))
+              "add" (append-entry (note :content (rest arguments)
+                                        :title (:title options)
+                                        :topic (:topic options)
+                                        :tags (:tags options)
+                                        :date (current-date)))
+              "search" (doseq [entry (interpose
+                                      "\n"
+                                      (sequence (apply-keyword-args
+                                                 filter-xf
+                                                 :content (str/join \space (rest arguments))
+                                                 options)
+                                                (entry-metadata)))]
+                         (println entry))
+              (println "Invalid command. Try \"notes --help\" to see how the program is used")))
           (println "Invalid command. Try \"notes --help\" to see how the program is used"))))))

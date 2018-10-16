@@ -1,10 +1,9 @@
 {:deps {org.clojure/clojure {:mvn/version "1.9.0"}
         org.clojure/tools.cli {:mvn/version "0.4.1"}
-        com.github.luben/zstd-jni {:mvn/version "1.3.6-1"}}
+        org.lz4/lz4-java {:mvn/version "1.5.0"}}
  :paths ["src"]
  :aliases {:run {:main-opts ["-m" "notes.core"]}
            :native-image {:extra-deps {luchiniatwork/cambada {:mvn/version "1.0.0"}}
                           :main-opts ["-m" "cambada.native-image"
                                       "--graalvm-home" "/usr/lib/jvm/java-8-graal"
-                                      "-m" "notes.core"
-                                      "--graalvm-opt" "H:JNIConfigurationFiles=jniconf"]}}}
+                                      "-m" "notes.core"]}}}
