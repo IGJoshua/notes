@@ -7,6 +7,7 @@
    [clojure.string :as str]
    [clojure.tools.cli :as cli])
   (:import
+   (com.github.luben.zstd Zstd)
    (java.io RandomAccessFile)
    (java.nio MappedByteBuffer)
    (java.nio.channels FileChannel$MapMode)
@@ -36,7 +37,8 @@
 
 (s/def ::location int?)
 (s/def ::size pos-int?)
-(s/def ::metadata (s/keys :req [::location ::size]
+(s/def ::compressed-size pos-int?)
+(s/def ::metadata (s/keys :req [::location ::size ::compressed-size]
                           :opt [::title ::topic ::tags]))
 
 (defn num->month
@@ -159,17 +161,21 @@
       (spit file nil))
     (with-open [fc (.getChannel (RandomAccessFile. file "rw"))]
       (let [meta-str (prn-str (select-keys note [::topic ::title ::tags]))
+            meta-arr (Zstd/compress (.getBytes meta-str))
             note-str (prn-str note)
+            note-arr (Zstd/compress (.getBytes note-str))
             buffer (.map fc FileChannel$MapMode/READ_WRITE
                          (.size fc)
-                         (+ (* 3 Long/BYTES)
-                            (count meta-str)
-                            (count note-str)))]
-        (.putLong buffer (+ (* 2 Long/BYTES) (count meta-str) (count note-str)))
+                         (+ (* 5 Long/BYTES)
+                            (count meta-arr)
+                            (count note-arr)))]
+        (.putLong buffer (+ (* 4 Long/BYTES) (count meta-arr) (count note-arr)))
         (.putLong buffer (count meta-str))
-        (.put buffer (.getBytes meta-str))
+        (.putLong buffer (count meta-arr))
+        (.put buffer meta-arr)
         (.putLong buffer (count note-str))
-        (.put buffer (.getBytes note-str)))))
+        (.putLong buffer (count note-arr))
+        (.put buffer note-arr))))
   nil)
 (s/fdef append-entry
   :args (s/cat :note ::note)
@@ -179,12 +185,15 @@
   [^MappedByteBuffer buffer loc]
   (let [size (.getLong buffer)
         meta-len (.getLong buffer)
-        meta-arr ^bytes (make-array Byte/TYPE meta-len)]
+        meta-arr-len (.getLong buffer)
+        meta-arr ^bytes (make-array Byte/TYPE meta-arr-len)]
     (.get buffer meta-arr)
-    (let [meta-str (String. meta-arr)
+    (let [meta-str (String. (Zstd/decompress meta-arr meta-len))
+          ;; Edited to this point
           tags (assoc (edn/read-string meta-str)
-                      ::location (+ loc (* Long/BYTES 3) meta-len)
-                      ::size (.getLong buffer))
+                      ::location (+ loc (* Long/BYTES 5) meta-arr-len)
+                      ::size (.getLong buffer)
+                      ::compressed-size (.getLong buffer))
           next-location (+ Long/BYTES size loc)]
       [tags next-location])))
 (s/fdef read-metadata
@@ -227,10 +236,10 @@
       (let [^MappedByteBuffer buffer (.map fc
                                            FileChannel$MapMode/READ_ONLY
                                            (::location metadata)
-                                           (::size metadata))
-            arr ^bytes (make-array Byte/TYPE (::size metadata))]
+                                           (::compressed-size metadata))
+            arr ^bytes (make-array Byte/TYPE (::compressed-size metadata))]
         (.get buffer arr)
-        (edn/read-string (String. arr))))))
+        (edn/read-string (String. (Zstd/decompress arr ^int (::size metadata))))))))
 (s/fdef read-entry
   :args (s/cat :metadata ::metadata)
   :ret ::note)
