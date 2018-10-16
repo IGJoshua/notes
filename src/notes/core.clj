@@ -184,7 +184,7 @@
 (defn- read-metadata
   [^MappedByteBuffer buffer loc]
   (let [size (.getLong buffer)
-        meta-len (.getLong buffer)
+        meta-len (int (.getLong buffer))
         meta-arr-len (.getLong buffer)
         meta-arr ^bytes (make-array Byte/TYPE meta-arr-len)]
     (.get buffer meta-arr)
@@ -239,7 +239,7 @@
                                            (::compressed-size metadata))
             arr ^bytes (make-array Byte/TYPE (::compressed-size metadata))]
         (.get buffer arr)
-        (edn/read-string (String. (Zstd/decompress arr ^int (::size metadata))))))))
+        (edn/read-string (String. (Zstd/decompress arr (int (::size metadata)))))))))
 (s/fdef read-entry
   :args (s/cat :metadata ::metadata)
   :ret ::note)
