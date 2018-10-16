@@ -150,7 +150,7 @@
        (filter identity)
        (str/join \newline)))
 
-(def ^:dynamic *db-file* "db.edn")
+(def ^:dynamic *db-file* "notes.db")
 
 (defn append-entry
   [note]
