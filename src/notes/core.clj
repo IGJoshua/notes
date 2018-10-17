@@ -299,11 +299,9 @@
   :ret ::note)
 
 (defn filter-xf
-  [& {:keys [content title topic tags before after date] :as args}]
+  [& {:keys [title topic tags before after date] :as args}]
   (let [title-terms (when title
-                      (map str/lower-case (str/split title #"\s+")))
-        content-terms (when content
-                        (map str/lower-case (str/split content #"\s+")))]
+                      (map str/lower-case (str/split title #"\s+")))]
     (comp (filter (if topic
                     #(= topic (::topic %))
                     (constantly true)))
@@ -322,13 +320,21 @@
           (filter (if title-terms
                     #(some (partial str/includes? (str/lower-case (::title %)))
                            title-terms)
-                    (constantly true)))
-          (map read-entry)
+                    (constantly true))))))
+
+(defn read-xf
+  [& {:keys [content]}]
+  (let [content-terms (when content
+                        (map str/lower-case (str/split content #"\s+")))]
+    (comp (map read-entry)
           (filter (if content-terms
                     #(some (partial str/includes? (str/lower-case (::content %)))
                            content-terms)
                     (constantly true)))
           (map note-text))))
+
+(def succinct-xf (comp (filter #(some % [::topic ::title ::tags]))
+                       (map note-text)))
 
 (defn usage
   [summary]
@@ -367,7 +373,8 @@
                  (date-from-java (LocalDate/parse % date-format) (LocalTime/of 23 59)))]
    ["-d" "--date MM-DD-YYYY" "Add the note to this date, or search for a note on this exact date"
     :parse-fn #(let [date-format (DateTimeFormatter/ofPattern "MM-dd-uuuu")]
-                 (date-from-java (LocalDate/parse % date-format)))]])
+                 (date-from-java (LocalDate/parse % date-format)))]
+   ["-s" "--succinct" "Searching only provides the metadata about the item when this flag is set"]])
 
 (defn apply-keyword-args
   [f & args]
@@ -394,20 +401,26 @@
                                             :tags (:tags options)
                                             :date (or (:date options)
                                                       (current-date)))))
-              "search" (let [entries (sequence (apply-keyword-args
-                                                filter-xf
-                                                :content (str/join \space (rest arguments))
-                                                options)
-                                               (entry-metadata))
+              "search" (let [xf (apply-keyword-args
+                                 filter-xf
+                                 options)
+                             xf (if-not (:succinct options)
+                                  (comp xf
+                                        (read-xf :content (str/join \space (rest arguments))))
+                                  (comp xf
+                                        succinct-xf))
+                             entries (sequence xf (entry-metadata))
                              entries (if (:reverse options)
                                        (reverse entries)
                                        entries)
-                             entries (if (= (:results options) "all")
+                             entries (if (= (:num-results options) "all")
                                        entries
-                                       (take (or (:results options)
+                                       (take (or (:num-results options)
                                                  1)
                                              entries))]
-                         (println (str "Searching for " (or (:results options) 1) " entries in your notes...\n"))
+                         (println (str "Searching for "
+                                       (or (:num-results options) 1)
+                                       " entries in your notes...\n"))
                          (doseq [entry (interpose "\n" entries)]
                            (println entry)))
               (println "Invalid command. Try \"notes --help\" to see how the program is used"))
