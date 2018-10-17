@@ -11,7 +11,8 @@
    (java.nio MappedByteBuffer)
    (java.nio.channels FileChannel$MapMode)
    (java.time LocalDateTime)
-   (java.util Calendar))
+   (java.util Calendar)
+   (org.iq80.snappy Snappy))
   (:gen-class))
 
 (s/def ::hour (s/and int? (partial > 24) (complement neg?)))
@@ -36,7 +37,8 @@
 
 (s/def ::location int?)
 (s/def ::size pos-int?)
-(s/def ::metadata (s/keys :req [::location ::size]
+(s/def ::compressed-size pos-int?)
+(s/def ::metadata (s/keys :req [::location ::size ::compressed-size]
                           :opt [::title ::topic ::tags]))
 
 (defn num->month
@@ -146,7 +148,9 @@
                 (name topic))
               (when tags
                 (interpose ", " (map name tags)))))
-        (str/join \space content)]
+        (if (sequential? content)
+          (str/join \space content)
+          (str content))]
        (filter identity)
        (str/join \newline)))
 
@@ -159,17 +163,21 @@
       (spit file nil))
     (with-open [fc (.getChannel (RandomAccessFile. file "rw"))]
       (let [meta-str (prn-str (select-keys note [::topic ::title ::tags]))
+            meta-arr (Snappy/compress (.getBytes meta-str))
             note-str (prn-str note)
+            note-arr (Snappy/compress (.getBytes note-str))
             buffer (.map fc FileChannel$MapMode/READ_WRITE
                          (.size fc)
-                         (+ (* 3 Long/BYTES)
-                            (count meta-str)
-                            (count note-str)))]
-        (.putLong buffer (+ (* 2 Long/BYTES) (count meta-str) (count note-str)))
+                         (+ (* 5 Long/BYTES)
+                            (count meta-arr)
+                            (count note-arr)))]
+        (.putLong buffer (+ (* 4 Long/BYTES) (count meta-arr) (count note-arr)))
         (.putLong buffer (count meta-str))
-        (.put buffer (.getBytes meta-str))
+        (.putLong buffer (count meta-arr))
+        (.put buffer meta-arr)
         (.putLong buffer (count note-str))
-        (.put buffer (.getBytes note-str)))))
+        (.putLong buffer (count note-arr))
+        (.put buffer note-arr))))
   nil)
 (s/fdef append-entry
   :args (s/cat :note ::note)
@@ -178,13 +186,15 @@
 (defn- read-metadata
   [^MappedByteBuffer buffer loc]
   (let [size (.getLong buffer)
-        meta-len (.getLong buffer)
-        meta-arr ^bytes (make-array Byte/TYPE meta-len)]
+        meta-len (int (.getLong buffer))
+        meta-arr-len (.getLong buffer)
+        meta-arr ^bytes (make-array Byte/TYPE meta-arr-len)]
     (.get buffer meta-arr)
-    (let [meta-str (String. meta-arr)
+    (let [meta-str (String. (Snappy/uncompress meta-arr 0 meta-arr-len))
           tags (assoc (edn/read-string meta-str)
-                      ::location (+ loc (* Long/BYTES 3) meta-len)
-                      ::size (.getLong buffer))
+                      ::location (+ loc (* Long/BYTES 5) meta-arr-len)
+                      ::size (.getLong buffer)
+                      ::compressed-size (.getLong buffer))
           next-location (+ Long/BYTES size loc)]
       [tags next-location])))
 (s/fdef read-metadata
@@ -227,10 +237,10 @@
       (let [^MappedByteBuffer buffer (.map fc
                                            FileChannel$MapMode/READ_ONLY
                                            (::location metadata)
-                                           (::size metadata))
-            arr ^bytes (make-array Byte/TYPE (::size metadata))]
+                                           (::compressed-size metadata))
+            arr ^bytes (make-array Byte/TYPE (::compressed-size metadata))]
         (.get buffer arr)
-        (edn/read-string (String. arr))))))
+        (edn/read-string (String. (Snappy/uncompress arr 0 (int (::compressed-size metadata)))))))))
 (s/fdef read-entry
   :args (s/cat :metadata ::metadata)
   :ret ::note)
@@ -281,7 +291,11 @@
    ["-t" "--tags \"[TAG*]\"" "Sets the tags on an add, and requires tags on a search"
     :parse-fn #(let [s (edn/read-string %)]
                  (set (map keyword s)))]
-   ["-f" "--file FILE" "Specifies a file to be used, useful when you have multiples"]])
+   ["-f" "--file FILE" "Specifies a file to be used, useful when you have multiples"]
+   ["-r" "--results NUM-RESULTS" "Specifies how many results should be given in a search"
+    :parse-fn #(if (= % "all")
+                 %
+                 (Long/parseLong %))]])
 
 (defn apply-keyword-args
   [f & args]
@@ -303,13 +317,18 @@
                                       :topic (:topic options)
                                       :tags (:tags options)
                                       :date (current-date)))
-            "search" (doseq [entry (interpose
-                                    "\n"
-                                    (sequence (apply-keyword-args
-                                               filter-xf
-                                               :content (str/join \space (rest arguments))
-                                               options)
-                                              (entry-metadata)))]
-                       (println entry))
+            "search" (let [entries (sequence (apply-keyword-args
+                                              filter-xf
+                                              :content (str/join \space (rest arguments))
+                                              options)
+                                             (entry-metadata))
+                           entries (if (= (:results options) "all")
+                                     entries
+                                     (take (or (:results options)
+                                               1)
+                                           entries))]
+                       (println (str "Searching for " (or (:results options) 1) " entries in your notes...\n"))
+                       (doseq [entry (interpose "\n" entries)]
+                         (println entry)))
             (println "Invalid command. Try \"notes --help\" to see how the program is used"))
           (println "Invalid command. Try \"notes --help\" to see how the program is used"))))))
