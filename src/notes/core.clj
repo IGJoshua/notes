@@ -355,26 +355,26 @@
   [[nil "--help" "Prints this message"]
    ["-T" "--topic TOPIC" "Sets the topic on an add, and required the topic on a search"
     :parse-fn keyword]
-   [nil "--title \"TITLE\"" "Sets the title on an add, and keyword searches the title on search"]
-   ["-t" "--tags \"[TAG*]\"" "Sets the tags on an add, and requires tags on a search"
+   [nil "--title \"TITLE\"" "Sets title on new note; keyword searches title"]
+   ["-t" "--tags \"[TAG*]\"" "Sets tags on new note; requires tags on search"
     :parse-fn #(let [s (edn/read-string %)]
                  (set (map keyword s)))]
-   ["-f" "--file FILE" "Specifies a file to be used, useful when you have multiples (default ~/.notes.db)"]
-   ["-n" "--num-results NUM-RESULTS" "Specifies how many results should be given in a search, either a number, or \"all\" (default 1)"
+   ["-f" "--file FILE" "Specifies a file to be used (default ~/.notes.db)"]
+   ["-n" "--num-results NUM-RESULTS" "Limits your search results, number or \"all\" (default 3)"
     :parse-fn #(if (= % "all")
                  %
                  (Long/parseLong %))]
-   ["-r" "--reverse" "Include this flag in a search if you want to reverse the order of results"]
+   ["-r" "--reverse" "Reverse order of notes in search"]
    ["-a" "--after MM-DD-YYYY" "Search only for notes after this date"
     :parse-fn #(let [date-format (DateTimeFormatter/ofPattern "MM-dd-uuuu")]
                  (date-from-java (LocalDate/parse % date-format) (LocalTime/of 0 0)))]
    ["-b" "--before MM-DD-YYYY" "Search only for notes before this date"
     :parse-fn #(let [date-format (DateTimeFormatter/ofPattern "MM-dd-uuuu")]
                  (date-from-java (LocalDate/parse % date-format) (LocalTime/of 23 59)))]
-   ["-d" "--date MM-DD-YYYY" "Add the note to this date, or search for a note on this exact date"
+   ["-d" "--date MM-DD-YYYY" "Add the note to this date; search for a note on this exact date"
     :parse-fn #(let [date-format (DateTimeFormatter/ofPattern "MM-dd-uuuu")]
                  (date-from-java (LocalDate/parse % date-format)))]
-   ["-s" "--succinct" "Searching only provides the metadata about the item when this flag is set"]])
+   ["-s" "--succinct" "Don't display full text when searching"]])
 
 (defn apply-keyword-args
   [f & args]
@@ -394,7 +394,8 @@
                                 *db-file*)]
           (if (seq arguments)
             (case (str/lower-case (first arguments))
-              "add" (do (println "Adding a new ")
+              "add" (do (println (str "Adding a new note about " (or (:topic options)
+                                                                     "nothing in particular")))
                         (append-entry (note :content (rest arguments)
                                             :title (:title options)
                                             :topic (:topic options)
@@ -416,10 +417,10 @@
                              entries (if (= (:num-results options) "all")
                                        entries
                                        (take (or (:num-results options)
-                                                 1)
+                                                 3)
                                              entries))]
                          (println (str "Searching for "
-                                       (or (:num-results options) 1)
+                                       (or (:num-results options) 3)
                                        " entries in your notes...\n"))
                          (doseq [entry (interpose "\n" entries)]
                            (println entry)))
