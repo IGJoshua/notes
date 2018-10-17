@@ -1,6 +1,6 @@
 {:deps {org.clojure/clojure {:mvn/version "1.9.0"}
         org.clojure/tools.cli {:mvn/version "0.4.1"}
-        org.lz4/lz4-java {:mvn/version "1.5.0"}}
+        org.iq80.snappy/snappy {:mvn/version "0.4"}}
  :paths ["src"]
  :aliases {:run {:main-opts ["-m" "notes.core"]}
            :native-image {:extra-deps {luchiniatwork/cambada {:mvn/version "1.0.0"}}

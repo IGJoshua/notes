@@ -12,7 +12,7 @@
    (java.nio.channels FileChannel$MapMode)
    (java.time LocalDateTime)
    (java.util Calendar)
-   (net.jpountz.lz4 LZ4Factory))
+   (org.iq80.snappy Snappy))
   (:gen-class))
 
 (s/def ::hour (s/and int? (partial > 24) (complement neg?)))
@@ -148,12 +148,13 @@
                 (name topic))
               (when tags
                 (interpose ", " (map name tags)))))
-        (str/join \space content)]
+        (if (sequential? content)
+          (str/join \space content)
+          (str content))]
        (filter identity)
        (str/join \newline)))
 
 (def ^:dynamic *db-file* "notes.db")
-(def ^:dynamic *compressor-factory* nil)
 
 (defn append-entry
   [note]
@@ -161,11 +162,10 @@
     (when-not (.exists file)
       (spit file nil))
     (with-open [fc (.getChannel (RandomAccessFile. file "rw"))]
-      (let [compressor (.fastCompressor *compressor-factory*)
-            meta-str (prn-str (select-keys note [::topic ::title ::tags]))
-            meta-arr (.compress compressor (.getBytes meta-str))
+      (let [meta-str (prn-str (select-keys note [::topic ::title ::tags]))
+            meta-arr (Snappy/compress (.getBytes meta-str))
             note-str (prn-str note)
-            note-arr (.compress compressor (.getBytes note-str))
+            note-arr (Snappy/compress (.getBytes note-str))
             buffer (.map fc FileChannel$MapMode/READ_WRITE
                          (.size fc)
                          (+ (* 5 Long/BYTES)
@@ -190,8 +190,7 @@
         meta-arr-len (.getLong buffer)
         meta-arr ^bytes (make-array Byte/TYPE meta-arr-len)]
     (.get buffer meta-arr)
-    (let [meta-str (String. (.decompress (.fastDecompressor *compressor-factory*)
-                                         meta-arr meta-len))
+    (let [meta-str (String. (Snappy/uncompress meta-arr 0 meta-arr-len))
           tags (assoc (edn/read-string meta-str)
                       ::location (+ loc (* Long/BYTES 5) meta-arr-len)
                       ::size (.getLong buffer)
@@ -241,8 +240,7 @@
                                            (::compressed-size metadata))
             arr ^bytes (make-array Byte/TYPE (::compressed-size metadata))]
         (.get buffer arr)
-        (edn/read-string (String. (.decompress (.fastDecompressor *compressor-factory*)
-                                               arr (int (::size metadata)))))))))
+        (edn/read-string (String. (Snappy/uncompress arr 0 (int (::compressed-size metadata)))))))))
 (s/fdef read-entry
   :args (s/cat :metadata ::metadata)
   :ret ::note)
@@ -293,7 +291,11 @@
    ["-t" "--tags \"[TAG*]\"" "Sets the tags on an add, and requires tags on a search"
     :parse-fn #(let [s (edn/read-string %)]
                  (set (map keyword s)))]
-   ["-f" "--file FILE" "Specifies a file to be used, useful when you have multiples"]])
+   ["-f" "--file FILE" "Specifies a file to be used, useful when you have multiples"]
+   ["-r" "--results NUM-RESULTS" "Specifies how many results should be given in a search"
+    :parse-fn #(if (= % "all")
+                 %
+                 (Long/parseLong %))]])
 
 (defn apply-keyword-args
   [f & args]
@@ -309,20 +311,24 @@
       (binding [*db-file* (or (:file options)
                               *db-file*)]
         (if (seq arguments)
-          (binding [*compressor-factory* (LZ4Factory/safeInstance)]
-            (case (str/lower-case (first arguments))
-              "add" (append-entry (note :content (rest arguments)
-                                        :title (:title options)
-                                        :topic (:topic options)
-                                        :tags (:tags options)
-                                        :date (current-date)))
-              "search" (doseq [entry (interpose
-                                      "\n"
-                                      (sequence (apply-keyword-args
-                                                 filter-xf
-                                                 :content (str/join \space (rest arguments))
-                                                 options)
-                                                (entry-metadata)))]
-                         (println entry))
-              (println "Invalid command. Try \"notes --help\" to see how the program is used")))
+          (case (str/lower-case (first arguments))
+            "add" (append-entry (note :content (rest arguments)
+                                      :title (:title options)
+                                      :topic (:topic options)
+                                      :tags (:tags options)
+                                      :date (current-date)))
+            "search" (let [entries (sequence (apply-keyword-args
+                                              filter-xf
+                                              :content (str/join \space (rest arguments))
+                                              options)
+                                             (entry-metadata))
+                           entries (if (= (:results options) "all")
+                                     entries
+                                     (take (or (:results options)
+                                               1)
+                                           entries))]
+                       (println (str "Searching for " (or (:results options) 1) " entries in your notes...\n"))
+                       (doseq [entry (interpose "\n" entries)]
+                         (println entry)))
+            (println "Invalid command. Try \"notes --help\" to see how the program is used"))
           (println "Invalid command. Try \"notes --help\" to see how the program is used"))))))
