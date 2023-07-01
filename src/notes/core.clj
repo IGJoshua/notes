@@ -380,6 +380,8 @@
   [f & args]
   (apply f (concat (butlast args) (into [] cat (last args)))))
 
+(def help-message "Invalid command. Try \"notes --help\" to see how the program is used")
+
 (defn -main
   [& args]
   (let [{:keys [options arguments summary errors] :as parsed-args}
@@ -388,7 +390,7 @@
       (when summary
         (println (usage summary)))
       (if errors
-        (println "Invalid command. Try \"notes --help\" to see how the program is used")
+        (println help-message)
         (binding [*db-file* (or (when (:file options)
                                   (File. ^String (:file options)))
                                 *db-file*)]
@@ -424,5 +426,5 @@
                                        " entries in your notes...\n"))
                          (doseq [entry (interpose "\n" entries)]
                            (println entry)))
-              (println "Invalid command. Try \"notes --help\" to see how the program is used"))
-            (println "Invalid command. Try \"notes --help\" to see how the program is used")))))))
+              (println help-message))
+            (println help-message)))))))
