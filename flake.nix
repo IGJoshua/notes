@@ -30,11 +30,10 @@
             };
 
             cljnotes-graal = cljpkgs.mkGraalBin {
-              cljDrv = self.packages."${system}".cljnotes-clj;
+              cljDrv = self.packages.${system}.cljnotes-clj;
             };
 
             default = self.packages.${system}.cljnotes-clj;
-
           };
 
           apps.default = {
