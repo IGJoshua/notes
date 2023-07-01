@@ -12,3 +12,4 @@ pom.xml.asc
 db.edn
 .cpcache/
 .direnv/
+.dir-locals.el
