@@ -3,7 +3,7 @@
    [clojure.tools.build.api :as b]))
 
 (def lib-coord 'org.suskalo/cljnotes)
-(def version (format "0.1.%s" (b/git-count-revs nil)))
+; (def version (format "0.1.%s" (b/git-count-revs nil)))
 
 (def source-dirs ["src/"])
 
