@@ -1,9 +1,17 @@
-{:deps {org.clojure/clojure {:mvn/version "1.9.0"}
+{:paths ["src"]
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         org.clojure/tools.cli {:mvn/version "0.4.1"}
         org.iq80.snappy/snappy {:mvn/version "0.4"}}
- :paths ["src"]
- :aliases {:run {:main-opts ["-m" "notes.core"]}
-           :native-image {:extra-deps {luchiniatwork/cambada {:mvn/version "1.0.0"}}
-                          :main-opts ["-m" "cambada.native-image"
-                                      "--graalvm-home" "/usr/lib/jvm/java-8-graal"
-                                      "-m" "notes.core"]}}}
+ :aliases
+ {:dev {:extra-paths ["."]
+        :extra-deps {io.github.clojure/tools.build {:git/tag "v0.3.0" :git/sha "e418fc9"}}
+        :java-opts ["-XX:-OmitStackTraceInFastThrow"]}
+  :build {:deps {org.clojure/clojure {:mvn/version "1.11.1"}
+                 io.github.clojure/tools.build {:git/tag "v0.3.0" :git/sha "e418fc9"}}
+          :ns-default build}
+
+  :run {:main-opts ["-m" "notes.core"]}
+  :native-image {:extra-deps {luchiniatwork/cambada {:mvn/version "1.0.0"}}
+                 :main-opts ["-m" "cambada.native-image"
+                             "--graalvm-home" "/usr/lib/jvm/java-8-graal"
+                             "-m" "notes.core"]}}}
