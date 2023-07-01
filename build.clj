@@ -2,9 +2,6 @@
   (:require
    [clojure.tools.build.api :as b]))
 
-(def lib-coord 'org.suskalo/cljnotes)
-; (def version (format "0.1.%s" (b/git-count-revs nil)))
-
 (def source-dirs ["src/"])
 
 (def target-dir "target/")
@@ -12,7 +9,7 @@
 
 (def basis (b/create-basis {:project "deps.edn"}))
 
-(def jar-file (str target-dir "cljnotes-DEV.jar"))
+(def jar-file (str target-dir "cljnotes.jar"))
 
 (defn clean
   "Deletes the `target/` directory."

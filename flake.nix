@@ -22,12 +22,17 @@
               projectSrc = ./.;
               name = "org.suskalo/cljnotes";
               main-ns = "notes.core";
+              version = "0.1.0";
+
+              buildCommand = "clj -T:build uber";
             };
 
-            cljnotes-jdk = cljpkgs.customJdk {
-              cljDrv = self.packages.${system}.cljnotes-clj;
-              locales = "en";
-            };
+            # TODO(Joshua): Figure out what modules need to be added for this to build
+            #cljnotes-jdk = cljpkgs.customJdk {
+            #  cljDrv = self.packages.${system}.cljnotes-clj;
+            #  jdkModules = [  ];
+            #  locales = "en";
+            #};
 
             cljnotes-graal = cljpkgs.mkGraalBin {
               cljDrv = self.packages.${system}.cljnotes-clj;

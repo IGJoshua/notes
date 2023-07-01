@@ -340,7 +340,7 @@
   [summary]
   (->> ["This is a simple notes application which uses a strange database backend."
         ""
-        "Usage: notes [options] action"
+        "Usage: cljnotes [options] action"
         ""
         "Options:"
         summary

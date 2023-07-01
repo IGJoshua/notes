@@ -5,5 +5,7 @@ with pkgs;
 mkShell {
   buildInputs = [
     clojure
+    git
+    unzip
   ];
 }
